@@ -3,6 +3,23 @@ import { Plus, Search, Filter, MoreHorizontal, Users, Clock, MapPin, DollarSign 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
 
 interface Job {
   id: string;
@@ -39,13 +56,50 @@ const typeStyles = {
   "remote": "bg-success/10 text-success",
 };
 
-export function Jobs() {
-  const [searchQuery, setSearchQuery] = useState("");
+const departments = ["Engineering", "Product", "Design", "Marketing", "Sales", "HR", "Finance", "Data"];
+const locations = ["San Francisco, CA", "New York, NY", "Austin, TX", "Chicago, IL", "Remote"];
+const jobTypes: Array<"full-time" | "part-time" | "contract" | "remote"> = ["full-time", "part-time", "contract", "remote"];
 
-  const filteredJobs = mockJobs.filter(job =>
+export function Jobs() {
+  const [jobs, setJobs] = useState<Job[]>(mockJobs);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [newJob, setNewJob] = useState({
+    title: "",
+    department: "",
+    location: "",
+    type: "" as Job["type"] | "",
+    salary: "",
+  });
+
+  const filteredJobs = jobs.filter(job =>
     job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     job.department.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleCreateJob = () => {
+    if (!newJob.title.trim() || !newJob.department || !newJob.location || !newJob.type) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    const job: Job = {
+      id: (jobs.length + 1).toString(),
+      title: newJob.title.trim(),
+      department: newJob.department,
+      location: newJob.location,
+      type: newJob.type as Job["type"],
+      salary: newJob.salary || "Competitive",
+      candidates: 0,
+      daysOpen: 0,
+      status: "active",
+    };
+
+    setJobs([job, ...jobs]);
+    setNewJob({ title: "", department: "", location: "", type: "", salary: "" });
+    setOpen(false);
+    toast.success("Job created successfully!");
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -55,10 +109,96 @@ export function Jobs() {
           <h1 className="text-2xl font-bold text-foreground">Jobs</h1>
           <p className="text-muted-foreground mt-1">Manage your open positions and job postings.</p>
         </div>
-        <Button variant="glow" size="lg">
-          <Plus className="h-4 w-4" />
-          Create Job
-        </Button>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button variant="glow" size="lg">
+              <Plus className="h-4 w-4" />
+              Create Job
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create New Job</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="job-title">Job Title *</Label>
+                <Input
+                  id="job-title"
+                  placeholder="e.g. Senior React Developer"
+                  value={newJob.title}
+                  onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job-department">Department *</Label>
+                <Select
+                  value={newJob.department}
+                  onValueChange={(value) => setNewJob({ ...newJob, department: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept} value={dept}>
+                        {dept}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job-location">Location *</Label>
+                <Select
+                  value={newJob.location}
+                  onValueChange={(value) => setNewJob({ ...newJob, location: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((loc) => (
+                      <SelectItem key={loc} value={loc}>
+                        {loc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job-type">Job Type *</Label>
+                <Select
+                  value={newJob.type}
+                  onValueChange={(value) => setNewJob({ ...newJob, type: value as Job["type"] })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select job type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {jobTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job-salary">Salary Range</Label>
+                <Input
+                  id="job-salary"
+                  placeholder="e.g. $100k - $130k"
+                  value={newJob.salary}
+                  onChange={(e) => setNewJob({ ...newJob, salary: e.target.value })}
+                />
+              </div>
+              <Button onClick={handleCreateJob} className="w-full">
+                Create Job
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Filters Bar */}
