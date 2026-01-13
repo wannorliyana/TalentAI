@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Search, Filter, MoreHorizontal, Users, Clock, MapPin, DollarSign } from "lucide-react";
+import { Plus, Search, Filter, MoreHorizontal, Users, Clock, MapPin, DollarSign, ArrowLeft } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -105,9 +106,16 @@ export function Jobs() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Jobs</h1>
-          <p className="text-muted-foreground mt-1">Manage your open positions and job postings.</p>
+        <div className="flex items-center gap-4">
+          <Link to="/">
+            <Button variant="outline" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Jobs</h1>
+            <p className="text-muted-foreground mt-1">Manage your open positions and job postings.</p>
+          </div>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
