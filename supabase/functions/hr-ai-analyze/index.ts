@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface HRAnalysisRequest {
-  type: "ats_score" | "job_match" | "salary_predict" | "career_insight" | "screen_candidate";
+  type: "ats_score" | "job_match" | "salary_predict" | "career_insight" | "screen_candidate" | "dashboard_insights";
   resumeText?: string;
   jobDescription?: string;
   jobTitle?: string;
@@ -16,6 +16,12 @@ interface HRAnalysisRequest {
   question?: string;
   candidateName?: string;
   candidateRole?: string;
+  dashboardData?: {
+    totalCandidates: number;
+    activeJobs: number;
+    interviewsScheduled: number;
+    recentActivity: string[];
+  };
 }
 
 serve(async (req) => {
@@ -24,7 +30,7 @@ serve(async (req) => {
   }
 
   try {
-    const { type, resumeText, jobDescription, jobTitle, location, experience, skills, question, candidateName, candidateRole } = 
+    const { type, resumeText, jobDescription, jobTitle, location, experience, skills, question, candidateName, candidateRole, dashboardData } = 
       await req.json() as HRAnalysisRequest;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -136,6 +142,40 @@ Name: ${candidateName || "Unknown"}
 Role Applied: ${candidateRole || "Not specified"}
 Experience: ${experience || "Not specified"}
 Skills: ${skills?.join(", ") || "Not specified"}`;
+        break;
+
+      case "dashboard_insights":
+        systemPrompt = `You are an expert HR analytics advisor. Analyze recruitment dashboard data and provide actionable insights.
+        
+You MUST respond with valid JSON in this exact format:
+{
+  "insights": [
+    {
+      "type": "trend",
+      "title": "Positive hiring momentum",
+      "description": "Detailed insight about the trend"
+    },
+    {
+      "type": "alert", 
+      "title": "Action needed",
+      "description": "Detailed alert about something that needs attention"
+    },
+    {
+      "type": "suggestion",
+      "title": "Optimization opportunity",
+      "description": "Detailed suggestion for improvement"
+    }
+  ],
+  "summary": "Brief overall summary of the recruitment health",
+  "priorityActions": ["First action to take", "Second action to take"]
+}
+type must be one of: "trend", "alert", "suggestion"
+Provide 3-5 diverse insights based on the data.`;
+        userPrompt = `Analyze this recruitment dashboard data and provide insights:
+Total Candidates: ${dashboardData?.totalCandidates || 48}
+Active Jobs: ${dashboardData?.activeJobs || 12}
+Interviews Scheduled: ${dashboardData?.interviewsScheduled || 8}
+Recent Activity: ${dashboardData?.recentActivity?.join(", ") || "Multiple applications received, 3 interviews completed"}`;
         break;
 
       default:
