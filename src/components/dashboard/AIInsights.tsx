@@ -1,5 +1,8 @@
-import { Sparkles, TrendingUp, AlertCircle, Lightbulb } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, TrendingUp, AlertCircle, Lightbulb, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface Insight {
   id: string;
@@ -8,7 +11,7 @@ interface Insight {
   description: string;
 }
 
-const mockInsights: Insight[] = [
+const defaultInsights: Insight[] = [
   {
     id: "1",
     type: "trend",
@@ -48,6 +51,63 @@ const typeConfig = {
 };
 
 export function AIInsights() {
+  const [insights, setInsights] = useState<Insight[]>(defaultInsights);
+  const [isLoading, setIsLoading] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const handleRunAnalysis = async () => {
+    setIsLoading(true);
+    toast.info("Running AI analysis...");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("hr-ai-analyze", {
+        body: {
+          type: "dashboard_insights",
+          dashboardData: {
+            totalCandidates: 48,
+            activeJobs: 12,
+            interviewsScheduled: 8,
+            recentActivity: [
+              "5 new applications today",
+              "3 interviews completed",
+              "2 offers extended",
+            ],
+          },
+        },
+      });
+
+      if (error) {
+        if (error.message?.includes("429")) {
+          toast.error("Rate limit exceeded. Please try again later.");
+        } else if (error.message?.includes("402")) {
+          toast.error("Usage limit reached. Please add credits.");
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      if (data?.result?.insights) {
+        const newInsights: Insight[] = data.result.insights.map(
+          (insight: { type: string; title: string; description: string }, index: number) => ({
+            id: `ai-${index}`,
+            type: insight.type as "trend" | "alert" | "suggestion",
+            title: insight.title,
+            description: insight.description,
+          })
+        );
+        setInsights(newInsights);
+        setSummary(data.result.summary || null);
+        toast.success("AI analysis complete!");
+      }
+    } catch (error) {
+      console.error("AI analysis error:", error);
+      toast.error("Failed to run AI analysis. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="bg-card rounded-xl shadow-soft border border-border/50 overflow-hidden animate-slide-up">
       <div className="p-6 border-b border-border gradient-primary">
@@ -61,8 +121,15 @@ export function AIInsights() {
           </div>
         </div>
       </div>
+
+      {summary && (
+        <div className="p-4 bg-accent/30 border-b border-border">
+          <p className="text-sm text-muted-foreground">{summary}</p>
+        </div>
+      )}
+
       <div className="divide-y divide-border">
-        {mockInsights.map((insight, index) => {
+        {insights.map((insight, index) => {
           const config = typeConfig[insight.type];
           const Icon = config.icon;
           return (
@@ -85,8 +152,19 @@ export function AIInsights() {
         })}
       </div>
       <div className="p-4 border-t border-border bg-accent/30">
-        <button className="w-full py-2 rounded-lg border border-primary text-primary text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-all">
-          Run AI Analysis
+        <button
+          onClick={handleRunAnalysis}
+          disabled={isLoading}
+          className="w-full py-2 rounded-lg border border-primary text-primary text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Analyzing...
+            </>
+          ) : (
+            "Run AI Analysis"
+          )}
         </button>
       </div>
     </div>
