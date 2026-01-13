@@ -9,12 +9,19 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  /**
+   * pdfjs-dist v4 uses top-level await in its ESM bundles.
+   * Building to ES2022 (or newer) is required.
+   */
+  esbuild: {
+    target: "es2022",
+  },
   build: {
-    target: "esnext",
+    target: "es2022",
   },
   optimizeDeps: {
     esbuildOptions: {
-      target: "esnext",
+      target: "es2022",
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
