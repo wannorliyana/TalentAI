@@ -1,11 +1,12 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, X, Loader2 } from "lucide-react";
+import { Upload, FileText, X, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import mammoth from "mammoth";
+import { supabase } from "@/integrations/supabase/client";
 
 // Set up PDF.js worker using a bundled asset (avoids CDN/CORS/dynamic import issues)
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
@@ -17,6 +18,7 @@ interface CVUploaderProps {
 
 export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isOCRProcessing, setIsOCRProcessing] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -47,6 +49,39 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
     return result.value.trim();
   };
 
+  const performOCR = async (file: File): Promise<string> => {
+    setIsOCRProcessing(true);
+    toast.info("PDF appears to be image-based. Running OCR...");
+    
+    try {
+      // Convert file to base64
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce(
+          (data, byte) => data + String.fromCharCode(byte),
+          ""
+        )
+      );
+
+      const { data, error } = await supabase.functions.invoke("pdf-ocr", {
+        body: { pdfBase64: base64, filename: file.name },
+      });
+
+      if (error) {
+        console.error("OCR error:", error);
+        throw new Error(error.message || "OCR failed");
+      }
+
+      if (!data?.text) {
+        throw new Error("No text extracted from OCR");
+      }
+
+      return data.text;
+    } finally {
+      setIsOCRProcessing(false);
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -63,8 +98,8 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File size must be under 5MB");
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File size must be under 10MB");
       return;
     }
 
@@ -75,7 +110,26 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
       let extractedText = "";
 
       if (file.type === "application/pdf") {
-        extractedText = await extractTextFromPDF(file);
+        // Try standard text extraction first
+        try {
+          extractedText = await extractTextFromPDF(file);
+        } catch (pdfError) {
+          console.error("Standard PDF extraction failed:", pdfError);
+          extractedText = "";
+        }
+
+        // If too little text extracted, try OCR fallback
+        if (extractedText.trim().length < 50) {
+          console.log("Standard extraction yielded too little text, trying OCR...");
+          try {
+            extractedText = await performOCR(file);
+          } catch (ocrError) {
+            console.error("OCR failed:", ocrError);
+            toast.error("Could not extract text from PDF. Please paste your CV manually.");
+            setFileName(null);
+            return;
+          }
+        }
       } else if (file.type === "text/plain" || file.name.endsWith('.txt')) {
         extractedText = await extractTextFromTxt(file);
       } else if (
@@ -119,6 +173,8 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
     }
   };
 
+  const isProcessing = isExtracting || isOCRProcessing;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -135,13 +191,13 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
           variant="outline"
           size="sm"
           onClick={() => fileInputRef.current?.click()}
-          disabled={isExtracting}
+          disabled={isProcessing}
           className="gap-2"
         >
-          {isExtracting ? (
+          {isProcessing ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Extracting...
+              {isOCRProcessing ? "Running OCR..." : "Extracting..."}
             </>
           ) : (
             <>
@@ -150,10 +206,19 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
             </>
           )}
         </Button>
-        <span className="text-xs text-muted-foreground">PDF, DOCX, or TXT (max 5MB)</span>
+        <span className="text-xs text-muted-foreground">PDF, DOCX, or TXT (max 10MB)</span>
       </div>
 
-      {fileName && (
+      {isOCRProcessing && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/50 border border-accent">
+          <Eye className="h-4 w-4 text-primary animate-pulse" />
+          <span className="text-sm text-card-foreground">
+            Scanning image-based PDF with AI OCR...
+          </span>
+        </div>
+      )}
+
+      {fileName && !isProcessing && (
         <div className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-lg",
           "bg-primary/5 border border-primary/20"
