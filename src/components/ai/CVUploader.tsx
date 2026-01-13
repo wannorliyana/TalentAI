@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
+import mammoth from "mammoth";
 
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
@@ -39,6 +40,12 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
     return await file.text();
   };
 
+  const extractTextFromWord = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value.trim();
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -70,9 +77,13 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
         extractedText = await extractTextFromPDF(file);
       } else if (file.type === "text/plain" || file.name.endsWith('.txt')) {
         extractedText = await extractTextFromTxt(file);
-      } else {
-        // For Word docs, show message to paste text
-        toast.info("Word documents require manual text paste. Copy your CV content and paste below.");
+      } else if (
+        file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        file.name.endsWith('.docx')
+      ) {
+        extractedText = await extractTextFromWord(file);
+      } else if (file.type === "application/msword" || file.name.endsWith('.doc')) {
+        toast.info("Legacy .doc format not supported. Please save as .docx or paste text manually.");
         setIsExtracting(false);
         setFileName(null);
         return;
@@ -138,7 +149,7 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
             </>
           )}
         </Button>
-        <span className="text-xs text-muted-foreground">PDF or TXT (max 5MB)</span>
+        <span className="text-xs text-muted-foreground">PDF, DOCX, or TXT (max 5MB)</span>
       </div>
 
       {fileName && (
