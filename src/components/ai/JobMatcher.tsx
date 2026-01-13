@@ -3,6 +3,7 @@ import { Briefcase, Users, CheckCircle2, AlertCircle, Loader2, MessageSquare } f
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useHRAI, JobMatchResult } from "@/hooks/useHRAI";
+import { CVUploader } from "./CVUploader";
 import { cn } from "@/lib/utils";
 
 const recommendationStyles = {
@@ -46,15 +47,16 @@ export function JobMatcher() {
         </div>
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-card-foreground mb-2 block">
-                Resume / CV Text
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-card-foreground block">
+                Resume / CV
               </label>
+              <CVUploader onTextExtracted={setResumeText} currentText={resumeText} />
               <Textarea
-                placeholder="Paste the candidate's resume content..."
+                placeholder="Or paste the candidate's resume content..."
                 value={resumeText}
                 onChange={(e) => setResumeText(e.target.value)}
-                className="min-h-[180px] resize-none"
+                className="min-h-[150px] resize-none"
               />
             </div>
             <div>
