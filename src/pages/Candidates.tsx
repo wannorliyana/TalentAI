@@ -1,9 +1,19 @@
 import { useState } from "react";
-import { Search, Filter, MoreHorizontal, Mail, Phone, Sparkles } from "lucide-react";
+import { Search, MoreHorizontal, Mail, Phone, Sparkles, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
 
 interface Candidate {
   id: string;
@@ -17,6 +27,19 @@ interface Candidate {
   matchScore: number;
   appliedDate: string;
   skills: string[];
+}
+
+interface ScreeningResult {
+  candidateId: string;
+  candidateName: string;
+  overallScore: number;
+  recommendation: "strong" | "consider" | "pass";
+  strengths: string[];
+  concerns: string[];
+  summary: string;
+  nextSteps: string[];
+  cultureFit: number;
+  technicalFit: number;
 }
 
 const mockCandidates: Candidate[] = [
@@ -37,9 +60,19 @@ const statusConfig = {
   rejected: { label: "Rejected", className: "bg-destructive/10 text-destructive" },
 };
 
+const recommendationConfig = {
+  strong: { label: "Strong Hire", className: "bg-success text-success-foreground" },
+  consider: { label: "Consider", className: "bg-warning text-warning-foreground" },
+  pass: { label: "Pass", className: "bg-destructive text-destructive-foreground" },
+};
+
 export function Candidates() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [isScreening, setIsScreening] = useState(false);
+  const [screeningProgress, setScreeningProgress] = useState(0);
+  const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([]);
+  const [showResults, setShowResults] = useState(false);
 
   const filteredCandidates = mockCandidates.filter(candidate => {
     const matchesSearch = candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -50,6 +83,81 @@ export function Candidates() {
 
   const statuses = ["all", "new", "screening", "interview", "offer", "hired"];
 
+  const handleScreenAll = async () => {
+    setIsScreening(true);
+    setScreeningProgress(0);
+    setScreeningResults([]);
+
+    const results: ScreeningResult[] = [];
+    const candidatesToScreen = filteredCandidates.filter(c => c.status === "new" || c.status === "screening");
+    
+    if (candidatesToScreen.length === 0) {
+      toast.info("No candidates to screen", {
+        description: "Only candidates with 'New' or 'Screening' status will be analyzed."
+      });
+      setIsScreening(false);
+      return;
+    }
+
+    toast.info(`Screening ${candidatesToScreen.length} candidates...`);
+
+    for (let i = 0; i < candidatesToScreen.length; i++) {
+      const candidate = candidatesToScreen[i];
+      
+      try {
+        const { data, error } = await supabase.functions.invoke('hr-ai-analyze', {
+          body: {
+            type: "screen_candidate",
+            candidateName: candidate.name,
+            candidateRole: candidate.role,
+            experience: candidate.experience,
+            skills: candidate.skills,
+          }
+        });
+
+        if (error) throw error;
+
+        const result = data.result;
+        results.push({
+          candidateId: candidate.id,
+          candidateName: candidate.name,
+          overallScore: result.overallScore || 75,
+          recommendation: result.recommendation || "consider",
+          strengths: result.strengths || [],
+          concerns: result.concerns || [],
+          summary: result.summary || "Analysis completed.",
+          nextSteps: result.nextSteps || [],
+          cultureFit: result.cultureFit || 80,
+          technicalFit: result.technicalFit || 80,
+        });
+      } catch (error: any) {
+        console.error(`Error screening ${candidate.name}:`, error);
+        if (error.message?.includes("429") || error.status === 429) {
+          toast.error("Rate limit exceeded. Please try again later.");
+          break;
+        }
+        if (error.message?.includes("402") || error.status === 402) {
+          toast.error("AI credits exhausted. Please add more credits.");
+          break;
+        }
+      }
+
+      setScreeningProgress(((i + 1) / candidatesToScreen.length) * 100);
+      // Small delay between requests to avoid rate limiting
+      if (i < candidatesToScreen.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    setScreeningResults(results);
+    setIsScreening(false);
+    
+    if (results.length > 0) {
+      setShowResults(true);
+      toast.success(`Screened ${results.length} candidates!`);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Page Header */}
@@ -58,11 +166,36 @@ export function Candidates() {
           <h1 className="text-2xl font-bold text-foreground">Candidates</h1>
           <p className="text-muted-foreground mt-1">Review and manage your candidate pipeline.</p>
         </div>
-        <Button variant="glow" size="lg">
-          <Sparkles className="h-4 w-4" />
-          AI Screen All
+        <Button 
+          variant="glow" 
+          size="lg" 
+          onClick={handleScreenAll}
+          disabled={isScreening}
+        >
+          {isScreening ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Screening...
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-4 w-4" />
+              AI Screen All
+            </>
+          )}
         </Button>
       </div>
+
+      {/* Screening Progress */}
+      {isScreening && (
+        <div className="bg-card rounded-xl p-4 border border-border/50 shadow-soft animate-fade-in">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground">AI Screening in progress...</span>
+            <span className="text-sm text-muted-foreground">{Math.round(screeningProgress)}%</span>
+          </div>
+          <Progress value={screeningProgress} className="h-2" />
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="flex flex-col gap-4 animate-slide-up">
@@ -200,6 +333,90 @@ export function Candidates() {
           </table>
         </div>
       </div>
+
+      {/* Screening Results Dialog */}
+      <Dialog open={showResults} onOpenChange={setShowResults}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              AI Screening Results
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="h-[60vh] pr-4">
+            <div className="space-y-4">
+              {screeningResults.map((result) => (
+                <div
+                  key={result.candidateId}
+                  className="bg-muted/30 rounded-xl p-4 border border-border"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h4 className="font-semibold text-foreground">{result.candidateName}</h4>
+                      <p className="text-sm text-muted-foreground">{result.summary}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge className={recommendationConfig[result.recommendation].className}>
+                        {recommendationConfig[result.recommendation].label}
+                      </Badge>
+                      <span className="text-lg font-bold text-primary">{result.overallScore}%</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Technical Fit</p>
+                      <div className="flex items-center gap-2">
+                        <Progress value={result.technicalFit} className="h-2 flex-1" />
+                        <span className="text-sm font-medium">{result.technicalFit}%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Culture Fit</p>
+                      <div className="flex items-center gap-2">
+                        <Progress value={result.cultureFit} className="h-2 flex-1" />
+                        <span className="text-sm font-medium">{result.cultureFit}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="font-medium text-success mb-1">Strengths</p>
+                      <ul className="space-y-1">
+                        {result.strengths.slice(0, 3).map((s, i) => (
+                          <li key={i} className="text-muted-foreground">• {s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-medium text-warning mb-1">Concerns</p>
+                      <ul className="space-y-1">
+                        {result.concerns.slice(0, 3).map((c, i) => (
+                          <li key={i} className="text-muted-foreground">• {c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {result.nextSteps.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <p className="font-medium text-foreground mb-1">Recommended Next Steps</p>
+                      <div className="flex flex-wrap gap-2">
+                        {result.nextSteps.map((step, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {step}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

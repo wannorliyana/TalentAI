@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface HRAnalysisRequest {
-  type: "ats_score" | "job_match" | "salary_predict" | "career_insight";
+  type: "ats_score" | "job_match" | "salary_predict" | "career_insight" | "screen_candidate";
   resumeText?: string;
   jobDescription?: string;
   jobTitle?: string;
@@ -14,6 +14,8 @@ interface HRAnalysisRequest {
   experience?: string;
   skills?: string[];
   question?: string;
+  candidateName?: string;
+  candidateRole?: string;
 }
 
 serve(async (req) => {
@@ -22,7 +24,7 @@ serve(async (req) => {
   }
 
   try {
-    const { type, resumeText, jobDescription, jobTitle, location, experience, skills, question } = 
+    const { type, resumeText, jobDescription, jobTitle, location, experience, skills, question, candidateName, candidateRole } = 
       await req.json() as HRAnalysisRequest;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -112,6 +114,28 @@ Skills: ${skills?.join(", ")}`;
         
 Respond in a helpful, conversational manner. Be specific and practical with your advice.`;
         userPrompt = question || "How can I improve my career prospects?";
+        break;
+
+      case "screen_candidate":
+        systemPrompt = `You are an expert HR recruiter conducting AI-powered candidate screening. Analyze the candidate profile and provide a comprehensive screening assessment.
+        
+You MUST respond with valid JSON in this exact format:
+{
+  "overallScore": 88,
+  "recommendation": "strong",
+  "strengths": ["Strong technical background", "Excellent experience level", "In-demand skills"],
+  "concerns": ["May require additional training in leadership"],
+  "summary": "A highly qualified candidate with strong potential for the role.",
+  "nextSteps": ["Schedule technical interview", "Verify references"],
+  "cultureFit": 85,
+  "technicalFit": 90
+}
+recommendation must be one of: "strong", "consider", "pass"`;
+        userPrompt = `Screen this candidate:
+Name: ${candidateName || "Unknown"}
+Role Applied: ${candidateRole || "Not specified"}
+Experience: ${experience || "Not specified"}
+Skills: ${skills?.join(", ") || "Not specified"}`;
         break;
 
       default:
