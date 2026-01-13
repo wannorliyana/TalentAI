@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { FileText, CheckCircle2, AlertTriangle, Loader2, Upload, Target, Lightbulb } from "lucide-react";
+import { FileText, CheckCircle2, AlertTriangle, Loader2, Target, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useHRAI, ATSResult } from "@/hooks/useHRAI";
+import { CVUploader } from "./CVUploader";
 import { cn } from "@/lib/utils";
 
 export function ATSScoreChecker() {
@@ -44,11 +45,12 @@ export function ATSScoreChecker() {
           </div>
         </div>
         <div className="p-6 space-y-4">
+          <CVUploader onTextExtracted={setResumeText} currentText={resumeText} />
           <Textarea
-            placeholder="Paste your resume content here... (Include all sections: contact info, experience, skills, education)"
+            placeholder="Or paste your resume content here... (Include all sections: contact info, experience, skills, education)"
             value={resumeText}
             onChange={(e) => setResumeText(e.target.value)}
-            className="min-h-[200px] resize-none"
+            className="min-h-[180px] resize-none"
           />
           <Button
             onClick={handleAnalyze}
