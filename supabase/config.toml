@@ -1,0 +1,4 @@
+project_id = "kabifjlveywcwkmgulda"
+
+[functions.hr-ai-analyze]
+verify_jwt = false
