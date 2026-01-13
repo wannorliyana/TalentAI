@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Users, Clock, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -159,9 +160,9 @@ export function JobsPipeline() {
         ))}
       </div>
       <div className="p-4 border-t border-border">
-        <button className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
+        <Link to="/jobs" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
           View all jobs →
-        </button>
+        </Link>
       </div>
     </div>
   );
