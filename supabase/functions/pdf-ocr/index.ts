@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface OCRRequest {
-  pdfBase64: string;
+  pages: string[]; // Array of base64 encoded page images
   filename?: string;
 }
 
@@ -16,10 +16,10 @@ serve(async (req) => {
   }
 
   try {
-    const { pdfBase64, filename } = await req.json() as OCRRequest;
+    const { pages, filename } = await req.json() as OCRRequest;
 
-    if (!pdfBase64) {
-      throw new Error("PDF data is required");
+    if (!pages || !Array.isArray(pages) || pages.length === 0) {
+      throw new Error("Page images are required");
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -27,9 +27,9 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Use Gemini's vision capabilities to extract text from the PDF
-    // We send the PDF as a base64 image/document for OCR processing
-    const systemPrompt = `You are an expert OCR (Optical Character Recognition) system. Your task is to extract ALL text content from the provided PDF document image.
+    console.log(`Processing ${pages.length} pages from ${filename || 'PDF'}`);
+
+    const systemPrompt = `You are an expert OCR (Optical Character Recognition) system. Your task is to extract ALL text content from the provided document page image.
 
 Instructions:
 - Extract every piece of text visible in the document
@@ -40,68 +40,91 @@ Instructions:
 - If text is unclear, make your best attempt to read it
 - Return ONLY the extracted text, nothing else`;
 
-    const userContent = [
-      {
-        type: "text",
-        text: `Extract all text from this PDF document${filename ? ` (${filename})` : ""}. Return only the extracted text content.`
-      },
-      {
-        type: "image_url",
-        image_url: {
-          url: `data:application/pdf;base64,${pdfBase64}`
+    // Process each page separately for better accuracy
+    const pageTexts: string[] = [];
+    
+    for (let i = 0; i < pages.length; i++) {
+      const pageBase64 = pages[i];
+      const pageNum = i + 1;
+      
+      console.log(`Processing page ${pageNum}/${pages.length}`);
+
+      const userContent = [
+        {
+          type: "text",
+          text: `Extract all text from page ${pageNum} of this document. Return only the extracted text content.`
+        },
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:image/png;base64,${pageBase64}`
+          }
         }
-      }
-    ];
+      ];
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent }
-        ],
-        temperature: 0.1,
-        max_tokens: 4000,
-      }),
-    });
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent }
+          ],
+          temperature: 0.1,
+          max_tokens: 4000,
+        }),
+      });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (!response.ok) {
+        if (response.status === 429) {
+          return new Response(
+            JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (response.status === 402) {
+          return new Response(
+            JSON.stringify({ error: "Usage limit reached. Please add credits." }),
+            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        const errorText = await response.text();
+        console.error(`AI gateway error on page ${pageNum}:`, response.status, errorText);
+        // Continue with other pages even if one fails
+        pageTexts.push(`[Page ${pageNum}: OCR failed]`);
+        continue;
       }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Usage limit reached. Please add credits." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+
+      const data = await response.json();
+      const pageText = data.choices?.[0]?.message?.content;
+
+      if (pageText) {
+        pageTexts.push(pageText.trim());
+        console.log(`Page ${pageNum}: extracted ${pageText.length} characters`);
+      } else {
+        pageTexts.push(`[Page ${pageNum}: No text extracted]`);
       }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error("OCR processing failed");
     }
 
-    const data = await response.json();
-    const extractedText = data.choices?.[0]?.message?.content;
+    // Combine all page texts
+    const combinedText = pageTexts.join("\n\n--- Page Break ---\n\n");
 
-    if (!extractedText) {
+    if (!combinedText || combinedText.length < 20) {
       throw new Error("No text could be extracted from the PDF");
     }
 
-    console.log(`OCR extracted ${extractedText.length} characters from PDF`);
+    console.log(`OCR completed: ${combinedText.length} total characters from ${pages.length} pages`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        text: extractedText,
-        characterCount: extractedText.length 
+        text: combinedText,
+        characterCount: combinedText.length,
+        pageCount: pages.length
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

@@ -49,22 +49,52 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
     return result.value.trim();
   };
 
+  const renderPdfPagesToImages = async (file: File): Promise<string[]> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pageImages: string[] = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2 }); // Higher scale for better OCR
+      
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) continue;
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      await page.render({
+        canvasContext: context,
+        viewport: viewport,
+      }).promise;
+
+      // Convert canvas to base64 PNG (remove the data:image/png;base64, prefix)
+      const dataUrl = canvas.toDataURL("image/png");
+      const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+      pageImages.push(base64);
+    }
+
+    return pageImages;
+  };
+
   const performOCR = async (file: File): Promise<string> => {
     setIsOCRProcessing(true);
     toast.info("PDF appears to be image-based. Running OCR...");
     
     try {
-      // Convert file to base64
-      const arrayBuffer = await file.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(arrayBuffer).reduce(
-          (data, byte) => data + String.fromCharCode(byte),
-          ""
-        )
-      );
+      // Render each page as an image for better OCR accuracy
+      const pageImages = await renderPdfPagesToImages(file);
+      
+      if (pageImages.length === 0) {
+        throw new Error("Could not render PDF pages");
+      }
+
+      toast.info(`Processing ${pageImages.length} page(s) with AI OCR...`);
 
       const { data, error } = await supabase.functions.invoke("pdf-ocr", {
-        body: { pdfBase64: base64, filename: file.name },
+        body: { pages: pageImages, filename: file.name },
       });
 
       if (error) {
