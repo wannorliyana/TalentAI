@@ -2,7 +2,7 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+**URL**: https://agent-69666fc8e674d7c751930212--talent-hr-ai.netlify.app/
 
 ## How can I edit this code?
 
