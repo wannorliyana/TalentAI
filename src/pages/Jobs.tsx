@@ -57,7 +57,7 @@ const typeStyles = {
 };
 
 const departments = ["Engineering", "Product", "Design", "Marketing", "Sales", "HR", "Finance", "Data"];
-const locations = ["San Francisco, CA", "New York, NY", "Austin, TX", "Chicago, IL", "Remote"];
+const locations = ["San Francisco, CA", "New York, NY", "Austin, TX", "Chicago, IL", "Malaysia", "Remote"];
 const jobTypes: Array<"full-time" | "part-time" | "contract" | "remote"> = ["full-time", "part-time", "contract", "remote"];
 
 export function Jobs() {
