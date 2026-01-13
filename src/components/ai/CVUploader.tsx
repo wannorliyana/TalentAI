@@ -19,6 +19,7 @@ interface CVUploaderProps {
 export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [isOCRProcessing, setIsOCRProcessing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState({ current: 0, total: 0 });
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,12 +50,15 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
     return result.value.trim();
   };
 
-  const renderPdfPagesToImages = async (file: File): Promise<string[]> => {
+  const renderPdfPagesToImages = async (file: File, onProgress?: (current: number, total: number) => void): Promise<string[]> => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const pageImages: string[] = [];
+    const totalPages = pdf.numPages;
 
-    for (let i = 1; i <= pdf.numPages; i++) {
+    for (let i = 1; i <= totalPages; i++) {
+      onProgress?.(i, totalPages);
+      
       const page = await pdf.getPage(i);
       const viewport = page.getViewport({ scale: 2 }); // Higher scale for better OCR
       
@@ -81,17 +85,21 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
 
   const performOCR = async (file: File): Promise<string> => {
     setIsOCRProcessing(true);
+    setOcrProgress({ current: 0, total: 0 });
     toast.info("PDF appears to be image-based. Running OCR...");
     
     try {
       // Render each page as an image for better OCR accuracy
-      const pageImages = await renderPdfPagesToImages(file);
+      const pageImages = await renderPdfPagesToImages(file, (current, total) => {
+        setOcrProgress({ current, total });
+      });
       
       if (pageImages.length === 0) {
         throw new Error("Could not render PDF pages");
       }
 
-      toast.info(`Processing ${pageImages.length} page(s) with AI OCR...`);
+      setOcrProgress({ current: pageImages.length, total: pageImages.length });
+      toast.info(`Sending ${pageImages.length} page(s) to AI OCR...`);
 
       const { data, error } = await supabase.functions.invoke("pdf-ocr", {
         body: { pages: pageImages, filename: file.name },
@@ -109,6 +117,7 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
       return data.text;
     } finally {
       setIsOCRProcessing(false);
+      setOcrProgress({ current: 0, total: 0 });
     }
   };
 
@@ -240,11 +249,28 @@ export function CVUploader({ onTextExtracted, currentText }: CVUploaderProps) {
       </div>
 
       {isOCRProcessing && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/50 border border-accent">
-          <Eye className="h-4 w-4 text-primary animate-pulse" />
-          <span className="text-sm text-card-foreground">
-            Scanning image-based PDF with AI OCR...
-          </span>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/50 border border-accent">
+            <Eye className="h-4 w-4 text-primary animate-pulse" />
+            <span className="text-sm text-card-foreground flex-1">
+              {ocrProgress.total > 0 
+                ? `Processing page ${ocrProgress.current} of ${ocrProgress.total}...`
+                : "Preparing OCR..."}
+            </span>
+            {ocrProgress.total > 0 && (
+              <span className="text-xs font-medium text-primary">
+                {Math.round((ocrProgress.current / ocrProgress.total) * 100)}%
+              </span>
+            )}
+          </div>
+          {ocrProgress.total > 1 && (
+            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all duration-300 ease-out"
+                style={{ width: `${(ocrProgress.current / ocrProgress.total) * 100}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 
